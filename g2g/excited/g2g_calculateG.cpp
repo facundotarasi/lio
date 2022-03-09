@@ -62,6 +62,7 @@ void Partition::solve_Gxc(double* Tmat,double* F,int DER)
            index += 1;
        }
      }
+     Fock_output[i].deallocate();
    }
    std::vector<HostMatrix<double> >().swap(Fock_output);
 } // END solve_Gxc
@@ -73,9 +74,11 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
    const int npoints = this->points.size();
    bool lda = false;
    bool compute_forces = true;
+#if CPU_RECOMPUTE or !GPU_KERNELS
    compute_functions(compute_forces,!lda);
-   HostMatrix<scalar_type> rmm_input(group_m,group_m);
+#endif
 
+   HostMatrix<scalar_type> rmm_input(group_m,group_m);
    int M = fortran_vars.m;
    get_rmm_input(rmm_input);
 
@@ -183,9 +186,24 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
    }
 
    // Free Memory
+   rmm_input.deallocate();
+   tred.deallocate();
    free(smallFock); smallFock = NULL;
    free(precond); precond = NULL;
    free(zcoef); zcoef = NULL;
+#if CPU_RECOMPUTE or !GPU_KERNELS
+  /* clear functions */
+  gX.deallocate();
+  gY.deallocate();
+  gZ.deallocate();
+  hIX.deallocate();
+  hIY.deallocate();
+  hIZ.deallocate();
+  hPX.deallocate();
+  hPY.deallocate();
+  hPZ.deallocate();
+  function_values_transposed.deallocate();
+#endif
 }
 
 #if FULL_DOUBLE

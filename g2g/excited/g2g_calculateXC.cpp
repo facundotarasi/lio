@@ -64,6 +64,7 @@ void Partition::solve_lr(double* T,double* F)
            index += 1;
        }
      }
+     Fock_output[i].deallocate();
    }
    vector< HostMatrix<double> >().swap(Fock_output);
 }
@@ -76,14 +77,17 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
    const int npoints = this->points.size();
    bool lda = false;
    bool compute_forces = false;
-   compute_functions(compute_forces,!lda);
-   HostMatrix<scalar_type> rmm_input(group_m,group_m);
 
+#if CPU_RECOMPUTE or !GPU_KERNELS
+   compute_functions(compute_forces,!lda);
+#endif
+
+   HostMatrix<scalar_type> rmm_input(group_m,group_m);
    int M = fortran_vars.m;
    get_rmm_input(rmm_input);
 
    double* smallFock  = (double*)malloc(group_m*group_m*sizeof(double));
-   memset(smallFock,0.0f,group_m*group_m*sizeof(double));
+   memset(smallFock,0.0,group_m*group_m*sizeof(double));
 
 // FORMAMOS LA TRANSITION DENSITY REDUCIDA
    HostMatrix<double> tred(group_m,group_m);
@@ -181,9 +185,25 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
           Fock(bi) += smallFock[col*group_m+row];
    }
    // Free Memory
+   rmm_input.deallocate();
+   tred.deallocate();
    free(smallFock); smallFock  = NULL;
    delete[] tot_term; tot_term = NULL;
    delete[] lrCoef; lrCoef = NULL;
+
+#if CPU_RECOMPUTE or !GPU_KERNELS
+  /* clear functions */
+  gX.deallocate();
+  gY.deallocate();
+  gZ.deallocate();
+  hIX.deallocate();
+  hIY.deallocate();
+  hIZ.deallocate();
+  hPX.deallocate();
+  hPY.deallocate();
+  hPZ.deallocate();
+  function_values_transposed.deallocate();
+#endif
 }
 template <class scalar_type>
 void PointGroupCPU<scalar_type>::get_tred_input(

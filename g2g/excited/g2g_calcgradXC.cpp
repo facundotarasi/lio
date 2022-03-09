@@ -62,6 +62,7 @@ void Partition::solveForcesExc(double* P,double* V,double* F,int met)
          F[i*3+1] += forces[k](i,1);
          F[i*3+2] += forces[k](i,2);
       }
+      forces[k].deallocate();
    }
    std::vector<HostMatrix<double> >().swap(forces);
    fflush(stdout);
@@ -75,7 +76,9 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
    bool lda = false;
    bool compute_forces = true;
 
+#if CPU_RECOMPUTE or !GPU_KERNELS
    compute_functions(compute_forces,!lda);
+#endif
 
    int M = fortran_vars.m;
    int natom = fortran_vars.atoms;
@@ -251,6 +254,9 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
    }
 
    // Free Memory
+   rmm_input.deallocate();
+   Pred.deallocate();
+   Vred.deallocate();
    free(dens); dens = NULL;
    free(diff); diff = NULL;
    free(trad); trad = NULL;
@@ -258,6 +264,20 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
    free(pfac); pfac = NULL;
    free(tfac); tfac = NULL;
    free(sForce); sForce = NULL;
+
+#if CPU_RECOMPUTE or !GPU_KERNELS
+  /* clear functions */
+  gX.deallocate();
+  gY.deallocate();
+  gZ.deallocate();
+  hIX.deallocate();
+  hIY.deallocate();
+  hIZ.deallocate();
+  hPX.deallocate();
+  hPY.deallocate();
+  hPZ.deallocate();
+  function_values_transposed.deallocate();
+#endif
 }
 
 #if FULL_DOUBLE
