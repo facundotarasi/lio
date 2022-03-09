@@ -205,7 +205,6 @@ class PointGroupCPU : public PointGroup<scalar_type> {
   typedef vec_type<scalar_type, 3> vec_type3;
   typedef vec_type<scalar_type, 4> vec_type4;
   G2G::HostMatrix<scalar_type> function_values;
-  G2G::HostMatrix<scalar_type> rho_values;
   G2G::HostMatrix<scalar_type> gX, gY, gZ;
   G2G::HostMatrix<scalar_type> hIX, hIY, hIZ;
   G2G::HostMatrix<scalar_type> hPX, hPY, hPZ;

@@ -142,9 +142,15 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
     for(int i=0;i<group_m;i++) {
        double z3xc, z3yc, z3zc, z; z3xc = z3yc = z3zc = z = 0.0f;
        double q3xc, q3yc, q3zc, q; q3xc = q3yc = q3zc = q = 0.0f;
+       double w3xc, w3yc, w3zc, w; w3xc = w3yc = w3zc = w = 0.0f;
        const scalar_type* rm = rmm_input.row(i);
        for(int j=0;j<=i;j++) {
-          const scalar_type rmj = rm[j];
+          // Ground Density
+          const double rmj = rm[j];
+          w += fv[j] * rmj;
+          w3xc += gfx[j] * rmj;
+          w3yc += gfy[j] * rmj;
+          w3zc += gfz[j] * rmj;
           // Difference Relaxed Excited State Density
           z += fv[j] * Pred(i,j);
           z3xc += gfx[j] * Pred(i,j);
@@ -158,6 +164,11 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
        }
        const double Fi = fv[i];
        const double gx = gfx[i], gy = gfy[i], gz = gfz[i];
+       // Ground Density
+       pd += Fi * w;
+       pdx += gx * w + w3xc * Fi;
+       pdy += gy * w + w3yc * Fi;
+       pdz += gz * w + w3zc * Fi;
        // Difference Relaxed Excited State Density
        pp += Fi * z;
        ppx += gx * z + z3xc * Fi;
@@ -169,11 +180,6 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
        pty += gy * q + q3yc * Fi;
        ptz += gz * q + q3zc * Fi;
     }
-    // Ground State Density
-    pd  = rho_values(0,point);
-    pdx = rho_values(1,point);
-    pdy = rho_values(2,point);
-    pdz = rho_values(3,point);
 
     double sigma = (pdx * pdx) + (pdy * pdy) + (pdz * pdz);
     dens[0] = pd; dens[1] = pdx; dens[2] = pdy; dens[3] = pdz;

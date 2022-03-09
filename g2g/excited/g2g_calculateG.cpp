@@ -115,9 +115,16 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
       const scalar_type* gzv = gZ.row(point);
       for(int i=0;i<group_m;i++) {
          double z3xc, z3yc, z3zc, z; z3xc = z3yc = z3zc = z = 0.0f;
+         double w3xc, w3yc, w3zc, w; w3xc = w3yc = w3zc = w = 0.0f;
          const scalar_type* rm = rmm_input.row(i);
          for(int j=0;j<=i;j++) {
+            // Ground Density
             const double rmj = rm[j];
+            w += fv[j] * rmj;
+            w3xc += gxv[j] * rmj;
+            w3yc += gyv[j] * rmj;
+            w3zc += gzv[j] * rmj;
+
             // Transition Density
             z += fv[j] * tred(i,j);
             z3xc += gxv[j] * tred(i,j);
@@ -126,17 +133,18 @@ template<class scalar_type> void PointGroupCPU<scalar_type>::
          }
          const double Fi = fv[i];
          const double gx = gxv[i], gy = gyv[i], gz = gzv[i];
+         // Ground Density
+         pd += Fi * w;
+         pdx += gx * w + w3xc * Fi;
+         pdy += gy * w + w3yc * Fi;
+         pdz += gz * w + w3zc * Fi;
+
          // Transition Density
          red += Fi * z;
          redx += gx * z + z3xc * Fi;
          redy += gy * z + z3yc * Fi;
          redz += gz * z + z3zc * Fi;
       }
-      // Ground State Density
-      pd = rho_values(0,point);
-      pdx = rho_values(1,point);
-      pdy = rho_values(2,point);
-      pdz = rho_values(3,point);
 
       double sigma = pdx * pdx + pdy * pdy + pdz * pdz;
 
