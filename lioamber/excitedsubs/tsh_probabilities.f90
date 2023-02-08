@@ -1,6 +1,6 @@
 subroutine tsh_probabilities(C,E,Xexc,Eexc,NCO,M,Mlr,Ndim,Nvirt,Etot,Nstat)
 use garcha_mod  , only: natom, Pmat_vec, nucvel, atom_mass
-use excited_data, only: TSH, root, gamma_old
+use excited_data, only: TSH, root, gamma_old, nucvel_old, Nesup, Nesup_old
    implicit none
 
    integer, intent(in) :: NCO, M, Mlr, Ndim, Nvirt, Nstat
@@ -20,7 +20,9 @@ use excited_data, only: TSH, root, gamma_old
    if ( root == 0 ) return
 
 !TODO: for the moment, this is the best place to put Energy
+   Nesup(1) = Etot ! GS energy
    Etot = Etot + Eexc(root)
+   Nesup(2) = Etot ! ES energy
 
    if ( root > Nstat ) then
       print*, "The root variable is bigger than nstates"
@@ -82,132 +84,158 @@ use excited_data, only: TSH, root, gamma_old
       enddo
       print*, "NORM of NACVs", Knr*Knr*4.0d0
 
-      call coef_propagator(gamma_old,nucvel,natom,Eexc(root))
+      call coef_propagator(gammaTot,nucvel,Nesup,gamma_old,nucvel_old,Nesup_old,natom)
+
+      ! Save variables
       gamma_old = gammaTot
+      nucvel_old = nucvel
+      Nesup_old = Nesup
    endif
    
    deallocate(gammaTot)
 end subroutine tsh_probabilities
 
 
-subroutine coef_propagator(g,v,natom,dE)
+subroutine coef_propagator(g,v,e,gOld,vOld,eOld,natom)
 use excited_data, only: dE_accum, lambda, tsh_time_dt, B_old, &
                         tsh_Jstate, tsh_Kstate, tsh_coef,     &
                         excited_forces, CI_found
-use garcha_mod, only: atom_mass
+use fstsh_data, only: coef_Stat, dot_Stat, elec_Coup, elec_Ene, elec_Pha, current_state, tsh_minprob
+use fstshsubs,  only: dot_calculation,interpol_EneCoupVel,phase_calculation,coef_evolution,correct_decoherence
+use garcha_mod, only: atom_mass, npas
    implicit none
 
    integer, intent(in) :: natom
-   LIODBLE, intent(in) :: dE, g(natom,3)
-   LIODBLE, intent(in) :: v(3,natom)
+   LIODBLE, intent(in) :: g(natom,3), v(3,natom), e(2)
+   LIODBLE, intent(in) :: gOld(natom,3), vOld(3,natom), eOld(2)
 
-   integer :: ii
-   LIODBLE :: Q, Gprob, factor, pop, temp1, temp2
-   LIODBLE :: number_random, kin_e, mass, norm
-   complex(kind=8) :: B, B_tot, B_abs, zero, B1, B2, pot, c_j, c_k
-   complex(kind=8), allocatable :: Uprop(:,:)
+   integer :: ii, iter, tsh_nucStep, state_before, surf_old, surf_new
+   LIODBLE :: Q, Qold, dt_elec, tot_time
+   LIODBLE :: coup(2,2), coup_old(2,2)
+   LIODBLE, allocatable :: elec_vel(:,:)
+   TDCOMPLEX :: cj, ck, tmpc
+   LIODBLE   :: norm, number_random, tmpr, cj2, prob, probFinal
+
+   ! Hardcoded variables
+   integer :: tsh_Enstep = 20
+
+!  integer :: ii
+!  LIODBLE :: Q, Gprob, factor, pop, temp1, temp2
+!  LIODBLE :: number_random, kin_e, mass, norm
+!  complex(kind=8) :: B, B_tot, B_abs, zero, B1, B2, pot, c_j, c_k
+!  complex(kind=8), allocatable :: Uprop(:,:)
+
+   state_before = tsh_Jstate
+   current_state = tsh_Jstate
+
+   if ( npas == 1 ) then
+      ! Obtain Cdot at actual time
+      !   this routine only needs variables at actual electronic time step
+      call dot_calculation(coef_Stat, elec_Coup, elec_Pha, dot_Stat, 2)
+
+      ! Save electronic variables
+      coef_Stat(3,:) = coef_Stat(2,:); coef_Stat(2,:) = coef_Stat(1,:)
+      elec_Coup(3,:,:) = elec_Coup(2,:,:); elec_Coup(2,:,:) = elec_Coup(1,:,:)
+      elec_Pha(3,:,:) = elec_Pha(2,:,:); elec_Pha(2,:,:) = elec_Pha(1,:,:)
+      dot_stat(3,:) = dot_stat(2,:); dot_stat(2,:) = dot_stat(1,:)
+     return
+   endif
 
    !  v = Nuclear Velocity [Bohr/au]
    !  g = Non-Adiabatic Coupling Vector [1/Bohr]
    !  Q = v X h [1/au]
-   Q = 0.0d0
+   Q = 0.0d0; Qold = 0.d0
+   coup = 0.d0; coup_old = 0.d0
    do ii=1,natom
-     Q = Q + v(1,ii) * g(ii,1)
-     Q = Q + v(2,ii) * g(ii,2)
-     Q = Q + v(3,ii) * g(ii,3)
+     Q    = Q    + v(1,ii) * g(ii,1)        + v(2,ii) * g(ii,2)        + v(3,ii) * g(ii,3)
+     Qold = Qold + vOld(1,ii) * gOld(ii,1)  + vOld(2,ii) * gOld(ii,2)  + vOld(3,ii) * gOld(ii,3)
    enddo
-
-!  ========== UNITS CONVERTIONS (ha -> au^-1) ==============
-!  1 ha = 6579664992709240.0 sec^-1
-!  1 sec = 1e+15 femto
-!  1 femto = 41.341347575 atomic time units(au)
-!  dE(au^-1) = dE(ha) * (6579664992709240.0 / 1e+15) 
-!             / 41.341347575 = 0.1591545844211451
-!  dE(au^-1) = dE(ha) * 0.1591545844211451
-!  =========================================================
-   dE_accum = (dE_accum + dE) * 0.1591545844211451d0
-   lambda = lambda + dE_accum * tsh_time_dt * 0.5d0
-
-   B = Q * exp(cmplx(0.0d0,-lambda,8))
-   B_tot = tsh_time_dt * 0.5d0 * ( B + B_old )
-
-   ! Save old values
-   B_old = B 
-   dE_accum = dE
-   
-   zero = (0.0d0,0.0d0)
-   B_abs = abs(B_tot)
-   if ( .not. (abs(B_abs) > 0.0D0)) then
-      B1 = zero
-      B2 = zero
-   else
-      B1 = B_tot / B_abs
-      B2 = conjg(B_tot) / B_abs
+   coup(1,2) = Q; coup(2,1) = -Q
+   coup_old(1,2) = Qold; coup_old(2,1) = -Qold
+   if (CI_found) then
+      coup = 0.0d0
+      coup_old = 0.0d0
    endif
-   allocate(Uprop(2,2))
-   Uprop(1,1)=cos(B_abs)
-   Uprop(1,2)=-B2*sin(B_abs)
-   Uprop(2,1)=B1*sin(B_abs)
-   Uprop(2,2)=cos(B_abs)
 
-   ! Obtain Coeficcients
-   tsh_coef = matmul(tsh_coef, Uprop)
-   deallocate(Uprop)
+   allocate(elec_vel(3,natom))
+   elec_vel = 0.d0
+   probFinal = 0.0d0
 
-   write(*,"(1X,A,1X,I2,A,I2)") "Transition:",tsh_Jstate," ->",tsh_Kstate
-   print*, "poblacion1", real(abs(tsh_coef(1))**2.0d0)
-   print*, "poblacion2", real(abs(tsh_coef(2))**2.0d0)
+   ! Time and Step Variables
+   ! tsh_time_dt: Nuclear Time step in a.u
+   ! tsh_nucStep: Nuclear step
+   ! dt_elec    : Electronic Time step in a.u
+   ! tsh_Enstep : Number of Electronic steps in each Nuclear step
+   !
+   dt_elec = tsh_time_dt / real(tsh_Enstep)
+   tsh_nucStep = npas - 1
 
-   ! Probability Calculate
-   c_j = tsh_coef(tsh_Jstate)
-   c_k = conjg(tsh_coef(tsh_Kstate))
-   if (tsh_Jstate > tsh_Kstate) then
-      pot = exp(-cmplx(0.0d0,0.0d0,8))
-      Q = -Q
-   else
-      pot = exp(cmplx(0.0d0,0.0d0,8))
-   endif
-   factor = real(c_j*c_k*pot)
-   Gprob  = factor*Q*(-2.0d0)
+   ! Main Electronic Interpolation
+   do iter = 0, tsh_Enstep-1
+      tot_time = (dt_elec * iter + tsh_nucStep * tsh_time_dt) * 0.02418884254d0 ! change a.u to femto                                             
+      write(*,"(3X,A,I2,A,F8.4,A)") "Electronic Sub-step= ",iter," Time= ", tot_time, " fs."
 
-   if ( Gprob < 0.0d0 ) Gprob = 0.0d0
-   if ( Gprob > 1.0d0 ) print*, "Probabilitie WRONG?"
-   pop = real( abs(c_j)*abs(c_j) )
+      ! Energy, Coupling and Velocities Interpolation
+      call interpol_EneCoupVel(e,eOld,coup,coup_old,elec_Ene,elec_Coup,2,v,vOld,elec_vel, &
+                               natom,tsh_time_dt,dt_elec,iter)
 
-   Gprob = Gprob * tsh_time_dt / pop
-   call random_number(number_random)
-   print*, "probability", Gprob
-   print*, "random number", number_random
+      ! Phase Calculation
+      call phase_calculation(elec_Ene,elec_Pha,dt_elec,2,tsh_nucStep)
+      
+      ! Coefficients Evolution
+      call coef_evolution(coef_Stat,elec_Coup,elec_Pha,dot_Stat,2,dt_elec,tsh_nucStep)
+      
+      ! Probabilities of Hopp Calculates
+      cj   = coef_Stat(1,tsh_Jstate)
+      tmpc = exp(cmplx(0.0d0,elec_Pha(1,tsh_Kstate,tsh_Jstate),COMPLEX_SIZE/2))
+      ck   = conjg(coef_Stat(1,tsh_Kstate))
+      tmpr = real(cj*ck*tmpc)
+      prob = tmpr*elec_Coup(1,tsh_Kstate,tsh_Jstate)*(-2.0d0)
+      norm = abs(coef_Stat(1,tsh_Kstate))**2
+      if ( prob < 0.0d0 ) prob = 0.0d0
+      cj2 = abs(cj)**2
+      probFinal = probFinal + prob * dt_elec/cj2
+      call random_number(number_random)
+      print*, "probability, random", probFinal, number_random
+      print*, "poblacion1", abs(coef_Stat(1,1))**2
+      print*, "poblacion2", abs(coef_Stat(1,2))**2
+      if ( probFinal > number_random .and. probFinal > tsh_minprob .and. (.not. CI_found) ) then
+              write(*,"(4X,A,I2,A,I2)") "HOPP= ", tsh_Jstate, " -> ", tsh_Kstate
+              current_state = tsh_Kstate
+              CI_found = .true.
+              tsh_Jstate = 1
+              tsh_Kstate = 2
+      endif
+      if ( elec_Ene(1,tsh_Jstate) < elec_Ene(1,1) .and. tsh_Jstate /= 1 .and. (.not. CI_found) ) then
+              write(*,"(4X,A)") "Forcing the system at Ground State"
+              current_state = tsh_Kstate
+              CI_found = .true.
+              tsh_Jstate = 1
+              tsh_Kstate = 2
+      endif
 
-!  Add this in order to change PES to GS
-   if ( dE < 0.0d0 .and. (.not. CI_found) ) then
-      print*, "HOPP due to CI, dE=", dE
+      ! Decoherence Term
+      call correct_decoherence(coef_Stat,elec_Ene,elec_vel,natom,2,dt_elec)
+
+      ! Save Variables
+      coef_Stat(3,:) = coef_Stat(2,:); coef_Stat(2,:) = coef_Stat(1,:)
+      elec_Ene(3,:) = elec_Ene(2,:); elec_Ene(2,:) = elec_Ene(1,:)
+      dot_stat(3,:) = dot_stat(2,:); dot_stat(2,:) = dot_stat(1,:)
+      elec_Coup(3,:,:) = elec_Coup(2,:,:); elec_Coup(2,:,:) = elec_Coup(1,:,:)
+      elec_Pha(3,:,:) = elec_Pha(2,:,:); elec_Pha(2,:,:) = elec_Pha(1,:,:)
+   enddo ! ENDDO interpolation
+   deallocate(elec_vel)
+
+   !  Add this in order to change PES to GS
+   if ( (state_before /= current_state) ) then
+      print*, "HOPP After propagation"
       CI_found = .True.
-      ii = Tsh_Jstate
-      tsh_Jstate = tsh_Kstate
-      tsh_Kstate = ii
+      tsh_Jstate = 1
+      tsh_Kstate = 2
       excited_forces = .False.
+      dot_Stat  = cmplx(0.0d0,0.0d0,COMPLEX_SIZE/2)
+      elec_Pha  = 0.0d0; elec_Coup = 0.0d0; elec_Ene = 0.0d0
    endif
-
-!  Correct Decoherence
-   kin_e = 0.0d0
-   do ii=1, natom
-      mass = atom_mass(ii)
-      kin_e = kin_e + mass * v(1,ii)**2.0d0
-      kin_e = kin_e + mass * v(2,ii)**2.0d0
-      kin_e = kin_e + mass * v(3,ii)**2.0d0
-   enddo
-   kin_e = 0.1d0 / kin_e ! 0.1 is the decay damping
-   ! J = actual states
-   temp1 = 1.0d0/dabs(dE)
-   temp2 = temp1 * ( 1.0d0 + kin_e )
-   temp1 = dsqrt( exp(-tsh_time_dt/temp2) )
-   tsh_coef(tsh_Kstate) = tsh_coef(tsh_Kstate) * temp1
-   norm = abs(tsh_coef(tsh_Kstate)**2)
-
-   temp1 = abs(tsh_coef(tsh_Jstate))**2.0d0
-   temp2 = dsqrt( (1.d0-norm) / temp1 )
-   tsh_coef(tsh_Jstate) = tsh_coef(tsh_Jstate) * temp2
 end subroutine coef_propagator
 
 

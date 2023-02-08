@@ -61,7 +61,8 @@ module excited_data
    logical :: CI_found = .false.
    integer :: tsh_Jstate, tsh_Kstate
    LIODBLE :: dE_accum, lambda, tsh_time_dt
-   LIODBLE, dimension(:,:), allocatable :: gamma_old
+   LIODBLE, dimension(:,:), allocatable :: gamma_old, nucvel_old
+   LIODBLE, dimension(:), allocatable   :: Nesup, Nesup_old
    complex(kind=8) :: B_old = cmplx(0.0d0,0.0d0,8)
    complex(kind=8), dimension(:), allocatable :: tsh_coef
 

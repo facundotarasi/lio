@@ -62,8 +62,10 @@ end subroutine fstsh_init
 
 subroutine tsh_init(dt, do_fsh)
    use excited_data,only: TSH, tsh_time_dt, tsh_coef, tsh_Jstate, &
-                          tsh_Kstate, gamma_old, excited_forces
-   use garcha_mod  , only: natom
+                          tsh_Kstate, gamma_old, excited_forces, nucvel_old, &
+                          Nesup, Nesup_old
+   use fstsh_data,   only: coef_Stat, dot_Stat, elec_Coup, elec_Ene, elec_Pha, tsh_minprob
+   use garcha_mod,   only: natom
 
    LIODBLE, intent(in)    :: dt
    logical, intent(inout) :: do_fsh
@@ -81,6 +83,7 @@ subroutine tsh_init(dt, do_fsh)
       tsh_time_dt = dt * (41341.3733366d0) ! tsh_time_dt in atomic units
     
       print*, "Init TSH Dynamics"
+      print*, "Min probabilty allowed", tsh_minprob
       ! RANDOM SEED
       call date_and_time(VALUES=random_values)
       call random_seed(size=random_size)
@@ -97,7 +100,23 @@ subroutine tsh_init(dt, do_fsh)
       tsh_Kstate  = 1
       allocate(gamma_old(natom,3))
       gamma_old = 0.0d0
-      
+      allocate(nucvel_old(3,natom))
+      nucvel_old = 0.0d0
+      allocate(Nesup(2),Nesup_old(2))
+      Nesup = 0.d0; Nesup_old = 0.d0
+
+      ! Electronic Interpolation variables
+      ! Allocate Variables
+      allocate(coef_Stat(3,2),dot_Stat(3,2))
+      allocate(elec_Coup(3,2,2),elec_Ene(3,2))
+      allocate(elec_Pha(3,2,2))
+
+      ! Set initial values
+      coef_Stat = cmplx(0.0d0,0.0d0,COMPLEX_SIZE/2)
+      coef_Stat(1,2) = cmplx(1.0d0,0.0d0,COMPLEX_SIZE/2)
+      dot_Stat  = cmplx(0.0d0,0.0d0,COMPLEX_SIZE/2)
+      elec_Pha  = 0.0d0; elec_Coup = 0.0d0; elec_Ene = 0.0d0
+
       excited_forces = .true.
    endif   
 
