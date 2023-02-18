@@ -248,3 +248,31 @@ void set_lc_blyp(int* HF, double* HF_fac, double* screen)
    if ( err != 0 ) exit(-1);
 }
 
+void set_wb97x(int* HF, double* HF_fac, double* screen)
+{
+   int err = -1;
+   fortran_vars.nx_func=1;
+   fortran_vars.nc_func=0;
+   fortran_vars.func_id = (int*) malloc(sizeof(int)*1);
+   fortran_vars.func_coef= (double*) malloc(sizeof(double)*1);
+   fortran_vars.HF = (int*) malloc(sizeof(double)*3);
+   fortran_vars.HF_fac = (double*) malloc(sizeof(double)*3);
+   
+   // Internal variables for LIBXC         
+   fortran_vars.func_id[0] = XC_HYB_GGA_XC_WB97; 
+   fortran_vars.func_coef[0]=1.00f; // X
+   fortran_vars.nsr_id = 1;
+
+   // Internal variables for LIBINT
+   fortran_vars.HF[0] = HF[0] = 0;
+   fortran_vars.HF[1] = HF[1] = 1;
+   fortran_vars.HF[2] = HF[2] = 1;
+   fortran_vars.HF_fac[0] = HF_fac[0] = 0.0f;
+   fortran_vars.HF_fac[1] = HF_fac[1] = 0.157706f;
+   fortran_vars.HF_fac[2] = HF_fac[2] = 1.0f;
+   fortran_vars.screen = *screen = 0.30f;
+
+   err = print_info(XC_HYB_GGA_XC_CAM_B3LYP);
+   if ( err != 0 ) exit(-1);
+}
+

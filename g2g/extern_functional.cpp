@@ -61,6 +61,10 @@ extern "C" void g2g_extern_functional_(int& main_id, bool* externFunc,
       // LC-BLYP
       case 400:
            set_lc_blyp(HF,HF_fac,screen); break;
+
+      // WB97X
+      case 464:
+           set_wb97x(HF,HF_fac,screen); break;
    
       default:
            cout << "The Functional id " << main_id << " doesn't implemented yet" << endl;
