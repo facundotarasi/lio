@@ -11,7 +11,12 @@ add_subdirectory(lioamber)
 
 # ENABLE FORTRAN
 enable_language(Fortran)
-add_compile_options(-Wall -O3)
+add_compile_options(-O3)
+
+# WARNING VARS
+if (WARNING)
+   add_compile_options(-Wall)
+endif()
 
 # LIOSOLO
 add_executable(liosolo.x liosolo/liosolo.f90)

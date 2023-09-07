@@ -8,7 +8,3 @@ option(WARNING "LIO will be compiled using Warning Flags" OFF)
 if (GPU) 
    message(FATAL_ERROR "For the moment no GPU compilations is provided in cmake")
 endif()
-
-#if (EXTERNAL)
-#   message(FATAL_ERROR "For the moment usage of external components are not allowed")
-#endif()
