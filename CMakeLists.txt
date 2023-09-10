@@ -1,9 +1,15 @@
 cmake_minimum_required(VERSION 3.10)
 
+# AVOID BUILD IN SOURCE DIRECTORY
+if ( ${CMAKE_CURRENT_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_BINARY_DIR} )
+   message(FATAL_ERROR "You can not build in the source directory, please created a separated build directory and rum cmake from there.")
+endif()
+
+# MAIN PROJECT - LIO
 project(LIO VERSION 1.0)
 
 # CHECK OPTIONS COMPILATIONS
-include(compileOptions.cmake)
+include(cmakefiles/compileOptions.cmake)
 
 # ADD LIBRARIES
 add_subdirectory(g2g)
