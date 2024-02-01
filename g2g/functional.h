@@ -29,7 +29,7 @@ int print_info(int func_id)
        break;
    }
 
-   printf(",\n  it belongs to the ");
+   printf(",\n  it belongs to the '");
    switch (func->info->family) {
       case (XC_FAMILY_LDA):
           printf("LDA"); break;
@@ -37,6 +37,8 @@ int print_info(int func_id)
           printf("GGA"); break;
       case (XC_FAMILY_MGGA):
           printf("MGGA"); break;
+      case (XC_FAMILY_HYB_GGA):       
+          printf("Hybrid GGA"); break;
       default:
           value = -1;
           printf("Family Unknown"); break;
